@@ -1,3 +1,7 @@
+#define VIDEO_ROWS      322
+#define VIDEO_COLS      240
+#define VIDEO_GRIDSIZE  5
+
 #include <cstdint>
 
 template<typename Ordinal, typename Iterator>

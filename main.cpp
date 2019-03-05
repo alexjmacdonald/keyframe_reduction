@@ -8,6 +8,7 @@
 #include <opencv2/videoio.hpp>
 #include <string>
 #include <typeinfo> // for typeid debugging
+#include <sstream>
 #include <vector>
 
 #include <assert.h>
@@ -160,28 +161,40 @@ int main(int32_t argc, char **argv) {
   // select _all_ frames
 
   std::vector<std::string> results{};
-  constexpr uint32_t ROWS     = 322;
-  constexpr uint32_t COLS     = 240;
-  constexpr uint32_t GRIDSIZE = 4;
-  reduce_frames<ROWS,COLS,GRIDSIZE>(results, paths, frame_idx, frame_indices, frame_it, frame_it_end);
+  reduce_frames<VIDEO_ROWS,VIDEO_COLS,VIDEO_GRIDSIZE>(results, paths, frame_idx, frame_indices, frame_it, frame_it_end);
+
+  for (auto line : results) {
+    std::cout << line << std::endl;
+  }
 
   return 0;
 }
 
-template <uint32_t ROWS, uint32_t COLS, uint32_t GRIDSIZE, typename ResultContainer, typename PathCollection, typename FrameIndexIterator, typename FrameIndexSequence>
+template <uint32_t RAW_ROWS, uint32_t RAW_COLS, uint32_t GRIDSIZE, typename ResultContainer, typename PathCollection, typename FrameIndexIterator, typename FrameIndexSequence>
 bool reduce_frames(ResultContainer &result, PathCollection &paths, uint32_t &frame_idx, FrameIndexSequence &frame_indices, FrameIndexIterator &frame_it, FrameIndexIterator &frame_it_end) {
   for (const auto &path : paths) {
     using namespace cv;
 
     Mat image = cv::imread(path, 1);
 
+    // If rows or cols are not an integral multiple of gridsize,
+    // we ignore the excess.
+    constexpr auto WASTE_ROWS = (RAW_ROWS % GRIDSIZE);
+    constexpr auto WASTE_COLS = (RAW_COLS % GRIDSIZE);
+    constexpr auto ROWS = RAW_ROWS - WASTE_ROWS;
+    constexpr auto COLS = RAW_COLS - WASTE_COLS;
+
     // Buffer will contain grayscale pixels row * col
     // TODO uint8_t should be arbitrary precision
-    uint8_t* grayscale_buf = new uint8_t[ ROWS * COLS ];
+    constexpr uint32_t pixel_ct = COLS * ROWS;
+
+    uint8_t* grayscale_buf = new uint8_t[ pixel_ct ];
 
     // Create a VideoCapture object and open the input file
     // If the input is the web camera, pass 0 instead of the video file name
     VideoCapture video(path);
+
+    const double fps = video.get(CAP_PROP_FPS);
 
     if (!video.isOpened()) {
       std::cerr << "Error opening video stream or file" << std::endl;
@@ -211,42 +224,103 @@ bool reduce_frames(ResultContainer &result, PathCollection &paths, uint32_t &fra
       // alleges row-major storage
       // mat.at(i, j) = mat.at(row, col) = mat.at(y, x)
       //
-      // assuming the iterator runs consecutively across array respecting cache
+      // assuming the iterator runs consecutively across array respecting cache locality
       // [0, 0, 0;     Row major layout
       //  2, 0, 0;  => 0 0 0 2 0 0 0 0 0
       //  0, 0, 0]     ^ --->
-      constexpr uint32_t pixel_ct = COLS * ROWS;
-      const uint8_t *pixel = frame.ptr<uint8_t>(0);
-      // TODO do you ever get videos with INT_MAX pixels per frame?
-      for (uint32_t pixel_idx = 0; pixel_idx < pixel_ct; pixel_idx++) {
+      //
+      // Looks like openCV has its own stack overflow --
+      // http://answers.opencv.org/question/38/what-is-the-most-effective-way-to-access-cvmat-elements-in-a-loop/
+      // Code works for now, but TODO look into pitch/stride * channel ct as way to iterate
 
-        const uint32_t x = pixel_idx / COLS;
-        const uint32_t y = pixel_idx % COLS;
+      // Little trick here to advance the pixel ptr past the waste columns.
+      // At the beginning of the loop, we assume our pointer is at waste:
+      //
+      //   [     good     ][  waste  ]
+      // -----------------^
+      //   [     good     ][  waste  ]
+      //   [     good     ][  waste  ]
+      //   [     good     ][  waste  ]
+      //   [          waste          ]
+      //
+      // so we seek 1 waste-width, wrapping us to the next row:
+      //
+      //   [     good     ][  waste  ]
+      //   [     good     ][  waste  ]
+      // --^
+      //   [     good     ][  waste  ]
+      //   [     good     ][  waste  ]
+      //   [          waste          ]
+      //
+      // To avoid an additional condition, we prime this invariant so that
+      // the first loop iteration sets us back to 0:
+      //
+      //   [ entirely unrelated mem  ]
+      // -----------------^
+      //   [     good     ][  waste  ]
+      //   [     good     ][  waste  ]
+      //   [     good     ][  waste  ]
+      //   [     good     ][  waste  ]
+      //   [          waste          ]
+      //
+      // Tailing waste rows are handled by simply not iterating over them.
+      const uint8_t *pixel = frame.ptr<uint8_t>(0) - WASTE_COLS;
 
-        // Default OpenCV format is BGR
-        const auto *pk_pixel = (pixel + pixel_idx * 3);
-        uint8_t b = static_cast<uint8_t>(*(pk_pixel + 0));
-        uint8_t g = static_cast<uint8_t>(*(pk_pixel + 1));
-        uint8_t r = static_cast<uint8_t>(*(pk_pixel + 2));
+      for (uint16_t row_idx = 0; row_idx < ROWS; row_idx++) {
+        pixel += (WASTE_COLS * 3); // BGR -> 3 channels per pixel, see above todo about channel determination
+        for (uint16_t col_idx = 0; col_idx < COLS; col_idx++) {
 
-        // convert pixel to grayscale
-        grayscale(r, g, b);
+          // Mapping function (where, in the new buffer, the pixel goes)
+          constexpr auto mapper = &maploc<GRIDSIZE, COLS, ROWS>;
 
-        constexpr auto ROW_WIDTH = COLS;
-        constexpr auto COL_WIDTH = ROWS;
-        //std::cerr << pixel_idx << "\t" << maploc<GRIDSIZE, ROW_WIDTH, COL_WIDTH>(y,x) << "/" << (frame.rows * frame.cols) << std::endl;
-        grayscale_buf[maploc<GRIDSIZE, ROW_WIDTH, COL_WIDTH>(y,x)] = grayscale(r,g,b);
-        //assert((maploc<3, 9, 9>(0, 0) == 0));
-        // use maploc() to copy to new buffer
-        // determine median from buffer chunks
-        //   depending on size of N,
-        //   selection sort, stop halfway (4 iterations is nothing)
-        //   quickselect or insertion sort?
-        //   TODO benchmark and then use GRID SIZE in template
-        //   to determine
-        // map buffer chunks to median
-        // print to stdout, achieve csv write via redirection
+          const auto loc = mapper(col_idx, row_idx);
+
+          // Default OpenCV format is BGR
+          uint8_t b = static_cast<uint8_t>(*(pixel + 0));
+          uint8_t g = static_cast<uint8_t>(*(pixel + 1));
+          uint8_t r = static_cast<uint8_t>(*(pixel + 2));
+
+          constexpr auto ROW_WIDTH = COLS;
+          constexpr auto COL_WIDTH = ROWS;
+          grayscale_buf[loc] = grayscale(r,g,b);
+
+          pixel += 3;
+        }
       }
+
+      // Sort each cell enough that arr[floor(n/2)] is the median.
+      // (for small N, selection sort seems efficient?)
+      // TODO this requires actual benchmarking for various N
+      constexpr auto cell_size  = GRIDSIZE*GRIDSIZE;
+      constexpr auto cell_count = (ROWS * COLS) / cell_size;
+      {
+        auto p = grayscale_buf;
+        for (uint32_t i = 0; i < cell_count; i++) {
+          // TODO write a real sort algo here
+          std::sort(p, p + cell_size);
+          p += cell_size;
+        }
+      }
+
+      // TODO benchmark
+      // is it better to separate or combine these loops?
+
+      // Accumulate each floor(n/2)'th member of each cell,
+      // which will be the median.
+      std::stringstream ss;
+      {
+        constexpr auto median_idx = (cell_size / 2);
+        auto p = grayscale_buf + median_idx;
+        const double timestamp = ((fps * frame_idx) / 1000.0);
+        ss << timestamp << "," << static_cast<uint32_t>(*p);
+        for (uint32_t i = 1; i < cell_count; i++) {
+          ss << ",";
+          ss << static_cast<uint32_t>(*p);
+          p += cell_size;
+        }
+      }
+
+      result.push_back(ss.str());
     }
     video.release();
     delete[] grayscale_buf;
