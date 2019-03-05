@@ -131,7 +131,8 @@ int main(int32_t argc, char** argv) {
       return 1;
     }
 
-    for (int frame_idx = 0; frame_idx < video.get(CAP_PROP_FRAME_COUNT); frame_idx++) {
+    uint32_t frame_ct = video.get(CAP_PROP_FRAME_COUNT);
+    for (uint32_t frame_idx = 0; frame_idx < frame_ct; frame_idx++) {
       // seek frame_idx according to keyframe list, if provided
       // TBD
 
