@@ -3,6 +3,8 @@
 template<typename Ordinal, typename Iterator>
 bool seek(bool use_container, Iterator &it, Iterator &end, Ordinal &frame_idx, Ordinal &frame_cap);
 
+uint8_t grayscale(const uint8_t r, const uint8_t g, const uint8_t b);
+
 template <uint32_t GRID, uint32_t _ROW_WIDTH, uint32_t _COL_WIDTH>
 uint32_t maploc(uint32_t r, uint32_t c) {
   // TODO validation strategy,
@@ -118,4 +120,5 @@ uint32_t maploc(uint32_t r, uint32_t c) {
     return (starting_grid_idx + within_grid_idx);
 }
 
-uint8_t grayscale(const uint8_t r, const uint8_t g, const uint8_t b);
+template <uint32_t ROWS, uint32_t COLS, uint32_t GRIDSIZE, typename ResultContainer, typename PathCollection, typename FrameIndexIterator, typename FrameIndexSequence>
+bool reduce_frames(ResultContainer &result, PathCollection &paths, uint32_t &frame_idx, FrameIndexSequence &frame_indices, FrameIndexIterator &frame_it, FrameIndexIterator &frame_it_end);

@@ -1,8 +1,9 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
+#include <algorithm> // sort
 #include <cstdint>
-#include <iostream>
+#include <iostream> // std::cout, cerr
 #include <opencv2/opencv.hpp>
 #include <opencv2/videoio.hpp>
 #include <string>
@@ -26,7 +27,6 @@ bool seek(bool use_container, Iterator &it, Iterator &end, Ordinal &frame_idx, O
   }
   return frame_idx < frame_cap;
 }
-
 
 void tests() {
   /*
@@ -73,7 +73,6 @@ uint8_t grayscale(const uint8_t r, const uint8_t g, const uint8_t b) {
 }
 
 int main(int32_t argc, char **argv) {
-
   tests();
 
   // Usage / handle CLI
@@ -131,16 +130,27 @@ int main(int32_t argc, char **argv) {
     }
   }
 
-  const std::vector<uint32_t> &frame_indices =
-      vm.count("indices") ? vm["indices"].as<std::vector<uint32_t>>()
-                          : std::vector<uint32_t>();
+  // Copy frame indices, if provided, then sort & unique
+  std::vector<uint32_t> v =
+    vm.count("indices") ? vm["indices"].as<std::vector<uint32_t>>()
+                        : std::vector<uint32_t>();
+  {
+    using namespace std;
+    sort(v.begin(), v.end());
+    auto last = unique(v.begin(), v.end());
+    v.erase(last, v.end());
+  }
+  const std::vector<uint32_t> &frame_indices = v;
 
   // frame_idx starts at the first video,
   // and proceeds continuously across subsequent vids.
-  // vid 1 := 20 frames
-  // vid 2 := 30 frames
-  // vid 3 := 40 frames
-  // frame_idx 0 -> 90
+  // let
+  //   vid 1 := 20 frames
+  //   vid 2 := 30 frames
+  //   vid 3 := 40 frames
+  // then
+  //   frame_idx 0 -> 90
+  //   for frame_idx = 55, we're at vid 2 : frame 35
   uint32_t frame_idx = 0;
   // if frame indices are provided,
   // use them to seek frame_idx.
@@ -149,6 +159,17 @@ int main(int32_t argc, char **argv) {
   // if no indices are provided,
   // select _all_ frames
 
+  std::vector<std::string> results{};
+  constexpr uint32_t ROWS     = 322;
+  constexpr uint32_t COLS     = 240;
+  constexpr uint32_t GRIDSIZE = 4;
+  reduce_frames<ROWS,COLS,GRIDSIZE>(results, paths, frame_idx, frame_indices, frame_it, frame_it_end);
+
+  return 0;
+}
+
+template <uint32_t ROWS, uint32_t COLS, uint32_t GRIDSIZE, typename ResultContainer, typename PathCollection, typename FrameIndexIterator, typename FrameIndexSequence>
+bool reduce_frames(ResultContainer &result, PathCollection &paths, uint32_t &frame_idx, FrameIndexSequence &frame_indices, FrameIndexIterator &frame_it, FrameIndexIterator &frame_it_end) {
   for (const auto &path : paths) {
     using namespace cv;
 
@@ -156,7 +177,7 @@ int main(int32_t argc, char **argv) {
 
     // Buffer will contain grayscale pixels row * col
     // TODO uint8_t should be arbitrary precision
-    uint8_t* grayscale_buf = new uint8_t[ image.rows * image.cols ];
+    uint8_t* grayscale_buf = new uint8_t[ ROWS * COLS ];
 
     // Create a VideoCapture object and open the input file
     // If the input is the web camera, pass 0 instead of the video file name
@@ -164,7 +185,7 @@ int main(int32_t argc, char **argv) {
 
     if (!video.isOpened()) {
       std::cerr << "Error opening video stream or file" << std::endl;
-      return 1;
+      return false;
     }
 
     uint32_t frame_ct = frame_idx + video.get(CAP_PROP_FRAME_COUNT);
@@ -180,7 +201,7 @@ int main(int32_t argc, char **argv) {
 
       // A cv::Mat (frame) is 'continuous' when its internal representation is
       // equivalent to one long array. We process the underlying array directly,
-      // assuming this.
+      // assuming this.  TODO live asserts are bad, should do something to ensure continuity in preprocessing
       assert(frame.isContinuous());
 
       if (frame.empty())
@@ -194,15 +215,13 @@ int main(int32_t argc, char **argv) {
       // [0, 0, 0;     Row major layout
       //  2, 0, 0;  => 0 0 0 2 0 0 0 0 0
       //  0, 0, 0]     ^ --->
-      const uint32_t row_ct = frame.rows;
-      const uint32_t col_ct = frame.cols;
-      const uint32_t pixel_ct = col_ct * row_ct;
+      constexpr uint32_t pixel_ct = COLS * ROWS;
       const uint8_t *pixel = frame.ptr<uint8_t>(0);
       // TODO do you ever get videos with INT_MAX pixels per frame?
       for (uint32_t pixel_idx = 0; pixel_idx < pixel_ct; pixel_idx++) {
 
-        const uint32_t x = pixel_idx / col_ct;
-        const uint32_t y = pixel_idx % col_ct;
+        const uint32_t x = pixel_idx / COLS;
+        const uint32_t y = pixel_idx % COLS;
 
         // Default OpenCV format is BGR
         const auto *pk_pixel = (pixel + pixel_idx * 3);
@@ -212,6 +231,12 @@ int main(int32_t argc, char **argv) {
 
         // convert pixel to grayscale
         grayscale(r, g, b);
+
+        constexpr auto ROW_WIDTH = COLS;
+        constexpr auto COL_WIDTH = ROWS;
+        //std::cerr << pixel_idx << "\t" << maploc<GRIDSIZE, ROW_WIDTH, COL_WIDTH>(y,x) << "/" << (frame.rows * frame.cols) << std::endl;
+        grayscale_buf[maploc<GRIDSIZE, ROW_WIDTH, COL_WIDTH>(y,x)] = grayscale(r,g,b);
+        //assert((maploc<3, 9, 9>(0, 0) == 0));
         // use maploc() to copy to new buffer
         // determine median from buffer chunks
         //   depending on size of N,
@@ -226,6 +251,5 @@ int main(int32_t argc, char **argv) {
     video.release();
     delete[] grayscale_buf;
   } // end iterating over paths
-
-  return 0;
+  return true;
 }
