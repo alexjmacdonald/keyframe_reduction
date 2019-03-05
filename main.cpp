@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <typeinfo> // for typeid debugging
+#include <cstdint> // for typeid debugging
 
 #include <assert.h>
 
@@ -14,8 +15,8 @@
 // - move testing to cmake
 // - cmake should determine grid size, row width, col width
 
-template <unsigned int GRID, unsigned int _ROW_WIDTH, unsigned int _COL_WIDTH>
-unsigned int maploc(unsigned int r, unsigned int c) {
+template <uint32_t GRID, uint32_t _ROW_WIDTH, uint32_t _COL_WIDTH>
+uint32_t maploc(uint32_t r, uint32_t c) {
   // TODO validation strategy,
   // right now we assume the caller isn't going to send OOB coords
   // this is probably appropriate (avoid branching) but should circle back
@@ -121,10 +122,10 @@ unsigned int maploc(unsigned int r, unsigned int c) {
     *  |  34 35 36  43 44 45  52 53 54
     */
 
-    const unsigned int cells_above        = (r/GRID) * (COL_WIDTH / GRID);
-    const unsigned int cells_before       = c / GRID;
-    const unsigned int starting_grid_idx  = (GRID*GRID) * (cells_above + cells_before);
-    const unsigned int within_grid_idx    = (r%GRID)*GRID + c%GRID;
+    const uint32_t cells_above        = (r/GRID) * (COL_WIDTH / GRID);
+    const uint32_t cells_before       = c / GRID;
+    const uint32_t starting_grid_idx  = (GRID*GRID) * (cells_above + cells_before);
+    const uint32_t within_grid_idx    = (r%GRID)*GRID + c%GRID;
 
     return (starting_grid_idx + within_grid_idx);
 }
@@ -167,12 +168,12 @@ void tests() {
   assert( (maploc<3, 9, 10>(2, 8) == 26) );
 }
 
-unsigned short grayscale(const unsigned short r, const unsigned short g, const unsigned short b) {
+uint8_t grayscale(const uint8_t r, const uint8_t g, const uint8_t b) {
   // luminosity = 0.299R + 0.587G + 0.114B
   return (299*r + 587*g + 114*b) / 1000;
 }
 
-int main(int argc, char** argv) {
+int main(int32_t argc, char** argv) {
 
   tests();
 
@@ -274,20 +275,20 @@ int main(int argc, char** argv) {
       // [0, 0, 0;     Row major layout
       //  2, 0, 0;  => 0 0 0 2 0 0 0 0 0
       //  0, 0, 0]     ^ --->
-      const int row_ct            = frame.rows;
-      const int col_ct            = frame.cols;
-      const int pixel_ct          = col_ct * row_ct;
+      const uint32_t row_ct            = frame.rows;
+      const uint32_t col_ct            = frame.cols;
+      const uint32_t pixel_ct          = col_ct * row_ct;
       const unsigned char* pixel  = frame.ptr<unsigned char>(0);
       // TODO do you ever get videos with INT_MAX pixels?
       for(int pixel_idx = 0; pixel_idx < pixel_ct; pixel_idx++) {
 
-        const int x = pixel_idx / col_ct;
-        const int y = pixel_idx % col_ct;
+        const uint32_t x = pixel_idx / col_ct;
+        const uint32_t y = pixel_idx % col_ct;
 
         // Default OpenCV format is BGR
-        unsigned short b = static_cast<unsigned short>(*(pixel + pixel_idx*3 + 0));
-        unsigned short g = static_cast<unsigned short>(*(pixel + pixel_idx*3 + 1));
-        unsigned short r = static_cast<unsigned short>(*(pixel + pixel_idx*3 + 2));
+        uint8_t b = static_cast<uint8_t>(*(pixel + pixel_idx*3 + 0));
+        uint8_t g = static_cast<uint8_t>(*(pixel + pixel_idx*3 + 1));
+        uint8_t r = static_cast<uint8_t>(*(pixel + pixel_idx*3 + 2));
 
         // convert pixel to grayscale
         grayscale(r,g,b);
