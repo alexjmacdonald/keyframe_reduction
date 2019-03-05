@@ -71,6 +71,7 @@ Overall TODOs:
   - did I printf format the timestamps?
   - idk why homebrew isn't installing gdb/valgrind.  only 1 mem allocation, doubtful this leaks
   - write a shell script wrapper for ffprobe / redirect to csv
+  - was pretty lazy about mixing boost/stdlib
 
 How to /properly/ find depth & channel ct?  this seems suboptimal
 some info on format defs:
