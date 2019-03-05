@@ -58,6 +58,12 @@ This utility was written with the following performance/design goals:
 
 This includes extensive use of compile-time constants.
 
+Bugs:
+-----
+  - timestamp assumes consistent FPS across video chunks
+  - did I printf format the timestamps?
+  - video chunks must match ROWS/COLS expectations, or violently segfault
+
 Overall TODOs:
 --------------
   - would be nice if opencv could detect keyframes and I didn't have to pass in ffprobe
@@ -66,9 +72,7 @@ Overall TODOs:
   - cmake should define grid size, row width, col width, instead of header defs
   - benchmark
   - cmake should output executable name reflecting the above (e.g., keyframe\_reduction\_320\_240\_8 for 320x240 with grid size 8)
-  - ensure video chunks match ROWS/COLS expectations instead of violently segfaulting
   - parallelization
-  - did I printf format the timestamps?
   - idk why homebrew isn't installing gdb/valgrind.  only 1 mem allocation, doubtful this leaks
   - write a shell script wrapper for ffprobe / redirect to csv
   - was pretty lazy about mixing boost/stdlib
