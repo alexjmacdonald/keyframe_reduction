@@ -160,7 +160,7 @@ int main(int32_t argc, char **argv) {
       const uint32_t row_ct = frame.rows;
       const uint32_t col_ct = frame.cols;
       const uint32_t pixel_ct = col_ct * row_ct;
-      const unsigned char *pixel = frame.ptr<unsigned char>(0);
+      const uint8_t *pixel = frame.ptr<uint8_t>(0);
       // TODO do you ever get videos with INT_MAX pixels?
       for (int pixel_idx = 0; pixel_idx < pixel_ct; pixel_idx++) {
 
@@ -168,9 +168,10 @@ int main(int32_t argc, char **argv) {
         const uint32_t y = pixel_idx % col_ct;
 
         // Default OpenCV format is BGR
-        uint8_t b = static_cast<uint8_t>(*(pixel + pixel_idx * 3 + 0));
-        uint8_t g = static_cast<uint8_t>(*(pixel + pixel_idx * 3 + 1));
-        uint8_t r = static_cast<uint8_t>(*(pixel + pixel_idx * 3 + 2));
+        const auto *pk_pixel = (pixel + pixel_idx * 3);
+        uint8_t b = static_cast<uint8_t>(*(pk_pixel + 0));
+        uint8_t g = static_cast<uint8_t>(*(pk_pixel + 1));
+        uint8_t r = static_cast<uint8_t>(*(pk_pixel + 2));
 
         // convert pixel to grayscale
         grayscale(r, g, b);
