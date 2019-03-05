@@ -68,7 +68,8 @@ Overall TODOs:
   - cmake should output executable name reflecting the above (e.g., keyframe\_reduction\_320\_240\_8 for 320x240 with grid size 8)
   - ensure video chunks match ROWS/COLS expectations instead of violently segfaulting
   - parallelization
-  - did I printf format the 
+  - did I printf format the timestamps?
+  - idk why homebrew isn't installing gdb/valgrind.  only 1 mem allocation, doubtful this leaks
   - write a shell script wrapper for ffprobe / redirect to csv
 
 How to /properly/ find depth & channel ct?  this seems suboptimal
