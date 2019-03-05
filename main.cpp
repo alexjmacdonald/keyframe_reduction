@@ -88,7 +88,7 @@ int main(int32_t argc, char** argv) {
   }
 
   // Obtain & validate file paths
-  auto paths = vm["files"].as<std::vector<std::string>>();
+  const auto& paths = vm["files"].as<std::vector<std::string>>();
   {
     bool halt = false;
     std::cerr << "Proceeding with file list:" << std::endl;
