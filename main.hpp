@@ -1,5 +1,8 @@
 #include <cstdint>
 
+template<typename Ordinal, typename Iterator>
+bool seek(bool use_container, Iterator &it, Iterator &end, Ordinal &frame_idx, Ordinal &frame_cap);
+
 template <uint32_t GRID, uint32_t _ROW_WIDTH, uint32_t _COL_WIDTH>
 uint32_t maploc(uint32_t r, uint32_t c) {
   // TODO validation strategy,

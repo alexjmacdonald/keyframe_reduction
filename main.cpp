@@ -13,6 +13,21 @@
 
 #include "main.hpp"
 
+// Updates frame_idx in place.
+// Returns true if frame_idx is still below frame_cap and
+// within the collection's list of frames (if provided).
+template<typename Ordinal, typename Iterator>
+bool seek(bool use_container, Iterator &it, Iterator &end, Ordinal &frame_idx, Ordinal &frame_cap) {
+  if (use_container) {
+    if (it == end) return false;
+    frame_idx = *(it++);
+  } else {
+    frame_idx++;
+  }
+  return frame_idx < frame_cap;
+}
+
+
 void tests() {
   /*
    * ordinal positions (subtr 1 to get zero-based idx)
@@ -32,7 +47,7 @@ void tests() {
       int r = i/9;
       int c = i%9;
       auto x = (maploc<3, 9, 9>(r, c));
-      std::cout << ">> " << i << "\t" << "\t" << r << "/" << c << ":\t" << x <<
+      std::cerr << ">> " << i << "\t" << "\t" << r << "/" << c << ":\t" << x <<
     std::endl;
     }
   */
@@ -67,11 +82,14 @@ int main(int32_t argc, char **argv) {
     using namespace boost::program_options;
 
     options_description desc{"Options"};
-    desc.add_options()("help,h", "Help screen")(
-        "files", value<std::vector<std::string>>()->multitoken()->required(),
-        "list of file paths")("indices",
-                              value<std::vector<uint32_t>>()->multitoken(),
-                              "frame indices to parse");
+    desc.add_options()
+        ("help,h",  "Help screen")
+        ("files",
+          value<std::vector<std::string>>()->multitoken()->required(),
+          "list of file paths")
+        ("indices",
+          value<std::vector<uint32_t>>()->multitoken(),
+          "frame indices to parse");
 
     store(parse_command_line(argc, argv, desc), vm);
 
@@ -79,12 +97,12 @@ int main(int32_t argc, char **argv) {
       notify(vm);
 
       if (vm.count("help")) {
-        std::cout << desc << std::endl;
+        std::cerr << desc << std::endl;
         return 0;
       }
 
     } catch (required_option &e) {
-      std::cout << desc << std::endl;
+      std::cerr << desc << std::endl;
       return 1;
     }
   }
@@ -117,26 +135,45 @@ int main(int32_t argc, char **argv) {
       vm.count("indices") ? vm["indices"].as<std::vector<uint32_t>>()
                           : std::vector<uint32_t>();
 
+  // frame_idx starts at the first video,
+  // and proceeds continuously across subsequent vids.
+  // vid 1 := 20 frames
+  // vid 2 := 30 frames
+  // vid 3 := 40 frames
+  // frame_idx 0 -> 90
+  uint32_t frame_idx = 0;
+  // if frame indices are provided,
+  // use them to seek frame_idx.
+  auto frame_it     = frame_indices.begin();
+  auto frame_it_end = frame_indices.end();
+  // if no indices are provided,
+  // select _all_ frames
+
   for (const auto &path : paths) {
     using namespace cv;
 
-    // Allocate new buffer
-
     Mat image = cv::imread(path, 1);
+
+    // Buffer will contain grayscale pixels row * col
+    // TODO uint8_t should be arbitrary precision
+    uint8_t* grayscale_buf = new uint8_t[ image.rows * image.cols ];
 
     // Create a VideoCapture object and open the input file
     // If the input is the web camera, pass 0 instead of the video file name
     VideoCapture video(path);
 
     if (!video.isOpened()) {
-      std::cout << "Error opening video stream or file" << std::endl;
+      std::cerr << "Error opening video stream or file" << std::endl;
       return 1;
     }
 
-    uint32_t frame_ct = video.get(CAP_PROP_FRAME_COUNT);
-    for (uint32_t frame_idx = 0; frame_idx < frame_ct; frame_idx++) {
-      // seek frame_idx according to keyframe list, if provided
-      // TBD
+    uint32_t frame_ct = frame_idx + video.get(CAP_PROP_FRAME_COUNT);
+    while (seek(frame_indices.size(), frame_it, frame_it_end, frame_idx, frame_ct)) {
+      std::cerr << "Processing frame #" << frame_idx << std::endl;
+
+      if (frame_indices.size()) {
+        video.set(CAP_PROP_POS_FRAMES, frame_idx);
+      }
 
       Mat frame;
       video >> frame;
@@ -161,8 +198,8 @@ int main(int32_t argc, char **argv) {
       const uint32_t col_ct = frame.cols;
       const uint32_t pixel_ct = col_ct * row_ct;
       const uint8_t *pixel = frame.ptr<uint8_t>(0);
-      // TODO do you ever get videos with INT_MAX pixels?
-      for (int pixel_idx = 0; pixel_idx < pixel_ct; pixel_idx++) {
+      // TODO do you ever get videos with INT_MAX pixels per frame?
+      for (uint32_t pixel_idx = 0; pixel_idx < pixel_ct; pixel_idx++) {
 
         const uint32_t x = pixel_idx / col_ct;
         const uint32_t y = pixel_idx % col_ct;
@@ -178,6 +215,7 @@ int main(int32_t argc, char **argv) {
         // use maploc() to copy to new buffer
         // determine median from buffer chunks
         //   depending on size of N,
+        //   selection sort, stop halfway (4 iterations is nothing)
         //   quickselect or insertion sort?
         //   TODO benchmark and then use GRID SIZE in template
         //   to determine
@@ -185,9 +223,9 @@ int main(int32_t argc, char **argv) {
         // print to stdout, achieve csv write via redirection
       }
     }
-
     video.release();
-  }
+    delete[] grayscale_buf;
+  } // end iterating over paths
 
   return 0;
 }
