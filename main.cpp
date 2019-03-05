@@ -1,5 +1,6 @@
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/videoio.hpp>
 #include <iostream>
@@ -90,36 +91,32 @@ int main(int32_t argc, char** argv) {
   // Obtain & validate file paths
   const auto& paths = vm["files"].as<std::vector<std::string>>();
   {
-    bool halt = false;
     std::cerr << "Proceeding with file list:" << std::endl;
-    for (auto it = paths.begin() ; it != paths.end(); ++it) {
-      const auto &path = *it;
+    for (const auto &path : paths) {
       std::cerr << "  " << path << std::endl;
 
       if (!boost::filesystem::exists(path) ) {
         std::cerr << "    \\_ " << "Couldn't ensure file at that path exists!" << std::endl;
-        halt = true;
       }
     }
 
-    if (halt) {
+    bool files_all_present = boost::algorithm::all< decltype(paths), bool(const boost::filesystem::path&) >(paths, boost::filesystem::exists);
+
+    if (!files_all_present) {
       std::cerr << "Halting for missing files." << std::endl;
       return 1;
     }
   }
 
-  std::vector<uint32_t> frame_indices{};
-  if (vm.count("indices")) {
-    frame_indices = vm["indices"].as<std::vector<uint32_t>>();
-  }
-  std::cout << frame_indices.size() << std::endl;
+  const std::vector<uint32_t> &frame_indices = vm.count("indices")
+    ?  vm["indices"].as<std::vector<uint32_t>>()
+    :  std::vector<uint32_t>();
 
-  for (auto it = paths.begin(); it != paths.end(); it++) {
+  for (const auto &path : paths) {
     using namespace cv;
 
     // Allocate new buffer
 
-    const auto &path = *it;
     Mat image = cv::imread( path, 1 );
 
     // Create a VideoCapture object and open the input file
@@ -145,17 +142,6 @@ int main(int32_t argc, char** argv) {
 
       if (frame.empty())
         break;
-
-      // How to /properly/ find depth & channel ct?  this seems suboptimal
-      // some info on format defs:
-      // https://docs.opencv.org/4.0.1/d1/d1b/group__core__hal__interface.html
-      // https://codeyarns.com/2015/08/27/depth-and-type-of-matrix-in-opencv/
-      /*
-      Mat first_frame;
-      video >> first_frame;
-      std::cout << first_frame.channels() << std::endl;
-      std::cout << (video.get(CAP_PROP_FORMAT)) << std::endl;  // CV_8U etc, see above docs
-      */
 
       // https://stackoverflow.com/questions/8184053/accessing-elements-of-a-cvmat-with-atfloati-j-is-it-x-y-or-row-col/42327350#42327350
       // alleges row-major storage
