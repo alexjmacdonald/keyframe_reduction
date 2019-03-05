@@ -12,10 +12,6 @@
 
 #include "main.hpp"
 
-// global TODOs:
-// - move testing to cmake
-// - cmake should determine grid size, row width, col width
-
 void tests() {
   /*
    * ordinal positions (subtr 1 to get zero-based idx)
@@ -72,7 +68,7 @@ int main(int32_t argc, char** argv) {
     desc.add_options()
       ("help,h", "Help screen")
       ("files",  value<std::vector<std::string>>() -> multitoken() -> required(), "list of file paths")
-      // TODO optionally ingest list of keyframe indices
+      ("indices",  value<std::vector<uint32_t>>() -> multitoken(), "frame indices to parse")
       ;
 
     store(parse_command_line(argc, argv, desc), vm);
@@ -82,6 +78,7 @@ int main(int32_t argc, char** argv) {
 
       if (vm.count("help")) {
         std::cout << desc << std::endl;
+        return 0;
       }
 
     } catch(required_option& e) {
@@ -110,6 +107,12 @@ int main(int32_t argc, char** argv) {
       return 1;
     }
   }
+
+  std::vector<uint32_t> frame_indices{};
+  if (vm.count("indices")) {
+    frame_indices = vm["indices"].as<std::vector<uint32_t>>();
+  }
+  std::cout << frame_indices.size() << std::endl;
 
   for (auto it = paths.begin(); it != paths.end(); it++) {
     using namespace cv;
